@@ -1,15 +1,9 @@
-import tkinter as tk
-from tkinter import ttk, messagebox
+from flask import Flask, jsonify, request
+import re
 
-
-class HoyNoCirculaApp:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("Hoy No Circula")
-        self.root.geometry("400x450")
-        self.root.configure(bg="#FFF8E7")
-
-        # Diccionario de restricciones por último dígito de la placa
+class HoyNoCircula:
+    def __init__(self):
+        # Diccionario de restricciones
         self.restricciones = {
             "1": "Lunes", "2": "Lunes",
             "3": "Martes", "4": "Martes",
@@ -18,76 +12,57 @@ class HoyNoCirculaApp:
             "9": "Viernes", "0": "Viernes"
         }
 
-        self.crear_widgets()
-
-    def crear_widgets(self):
-        # Título de la aplicación
-        titulo = tk.Label(
-            self.root, text="Tabla: Hoy No Circula",
-            font=("Arial", 16, "bold"), bg="#FDE2E4", fg="#5D3FD3"
-        )
-        titulo.pack(pady=10)
-
-        # Estilo para la tabla
-        estilo_tabla = ttk.Style()
-        estilo_tabla.configure("mystyle.Treeview", background="#F3E5F5", foreground="black", rowheight=25)
-        estilo_tabla.map("mystyle.Treeview", background=[("selected", "#FFCCCB")])
-
-        # Tabla para mostrar restricciones
-        self.tabla = ttk.Treeview(self.root, columns=("digito", "dia"), show="headings", style="mystyle.Treeview")
-        self.tabla.heading("digito", text="Último Dígito")
-        self.tabla.heading("dia", text="Día de Restricción")
-
-        # Llenado de datos en la tabla
-        for digito, dia in self.restricciones.items():
-            self.tabla.insert("", "end", values=(digito, dia))
-        self.tabla.pack(pady=10)
-
-        # Campo de entrada para la placa
-        label_placa = tk.Label(self.root, text="Ingrese la placa:", bg="#FFF8E7", font=("Arial", 12))
-        label_placa.pack()
-
-        self.entry_placa = tk.Entry(self.root, font=("Arial", 12), bg="#FFEBEE", fg="black")
-        self.entry_placa.pack(pady=5)
-
-        # Botón para verificar la placa
-        btn_verificar = tk.Button(self.root, text="Verificar", command=self.verificar_placa, bg="#D1C4E9", font=("Arial", 12))
-        btn_verificar.pack(pady=10)
-
-    def verificar_placa(self):
+    def verificar_placa(self, placa):
         try:
-            # Obtener el texto ingresado
-            placa = self.entry_placa.get().strip()
-
-            # Validar que no esté vacío
+            # Validación de entrada
             if not placa:
-                raise ValueError("El campo de la placa está vacío. Por favor, ingrese una placa válida.")
-
-            # Validar que el último carácter sea un dígito
+                raise ValueError("La placa no puede estar vacía.")
+            if not re.match(r"^[A-Za-z0-9]+$", placa):
+                raise ValueError("La placa debe contener solo caracteres alfanuméricos.")
             if not placa[-1].isdigit():
                 raise ValueError("La placa debe terminar en un número.")
 
-            # Obtener el último dígito y buscar el día de restricción
+            # Extraer último dígito y determinar día
             digito = placa[-1]
             dia = self.restricciones.get(digito, "No encontrado")
-
-            # Mostrar el resultado en un cuadro de diálogo
-            if dia == "No encontrado":
-                raise KeyError(f"No se encontró una restricción para el dígito {digito}.")
-            messagebox.showinfo("Resultado", f"El coche con placa {placa} no circula el {dia}.")
-
+            return f"El coche con placa {placa} no circula el {dia}."
         except ValueError as e:
-            # Manejar errores de validación
-            messagebox.showerror("Error", str(e))
-        except KeyError as e:
-            # Manejar errores de búsqueda en el diccionario
-            messagebox.showerror("Error", str(e))
-        except Exception as e:
-            # Manejar cualquier otro error inesperado
-            messagebox.showerror("Error inesperado", f"Ocurrió un error inesperado: {str(e)}")
+            return f"Error: {str(e)}"
+        except Exception:
+            return "Error: Ha ocurrido un error inesperado al procesar la placa."
 
+class HoyNoCirculaApp:
+    def __init__(self):
+        self.hoy_no_circula = HoyNoCircula()
+        self.app = Flask(__name__)
+        self.setup_routes()
 
-def ejecutar_hoy_no_circula():
-    root = tk.Tk()
-    app = HoyNoCirculaApp(root)
-    root.mainloop()
+    def setup_routes(self):
+        @self.app.route('/')
+        def index():
+            return jsonify({
+                "message": "Bienvenido a la API Hoy No Circula",
+                "usage": "Envíe una solicitud POST a /verificar con el campo 'placa'."
+            })
+
+        @self.app.route('/verificar', methods=['POST'])
+        def verificar():
+            try:
+                data = request.get_json()
+                if not data or 'placa' not in data:
+                    raise ValueError("El campo 'placa' es obligatorio en el cuerpo de la solicitud.")
+                
+                placa = data['placa'].strip()
+                resultado = self.hoy_no_circula.verificar_placa(placa)
+                return jsonify({"success": True, "result": resultado})
+            except ValueError as e:
+                return jsonify({"success": False, "error": str(e)})
+            except Exception:
+                return jsonify({"success": False, "error": "Error inesperado en el servidor."})
+
+    def run(self, debug=True):
+        self.app.run(debug=debug)
+
+if __name__ == "__main__":
+    app = HoyNoCirculaApp()
+    app.run()
